@@ -1,0 +1,84 @@
+image: node:18
+
+stages:
+  - test
+  - build
+  - deploy_staging
+  - deploy_production
+
+variables:
+  NODE_ENV: production
+  STAGING_PATH: "/var/www/dev-next"
+  PRODUCTION_PATH: "/var/www/main-next"
+  SSH_USER: "ubuntu"
+  SSH_HOST: "your.server.ip"
+
+cache:
+  paths:
+    - node_modules/
+
+before_script:
+  - npm install
+
+test:
+  stage: test
+  script:
+    - npm run test
+  only:
+    - dev
+
+build:
+  stage: build
+  script:
+    - npm run build
+  artifacts:
+    paths:
+      - .next
+  only:
+    - dev
+
+deploy_staging:
+  stage: deploy_staging
+  script:
+    - echo "Deploying to Staging..."
+    - 'which ssh-agent || ( apt-get update -y && apt-get install openssh-client -y )'
+    - eval $(ssh-agent -s)
+    - ssh-add <(echo "$SSH_PRIVATE_KEY")
+    - ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "
+        cd $STAGING_PATH &&
+        git pull origin dev &&
+        npm install &&
+        npm run build &&
+        pm2 restart next-app
+      "
+  only:
+    - dev
+    
+#auto_merge:
+#  stage: deploy_production
+#  script:
+#    - git config --global user.email "ci@yourdomain.com"
+#    - git config --global user.name "GitLab CI"
+#    - git checkout main
+#    - git merge dev
+#    - git push origin main
+#  only:
+#    - dev
+
+
+deploy_production:
+  stage: deploy_production
+  script:
+    - echo "Deploying to Production..."
+    - 'which ssh-agent || ( apt-get update -y && apt-get install openssh-client -y )'
+    - eval $(ssh-agent -s)
+    - ssh-add <(echo "$SSH_PRIVATE_KEY")
+    - ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "
+        cd $PRODUCTION_PATH &&
+        git pull origin main &&
+        npm install &&
+        npm run build &&
+        pm2 restart next-app
+      "
+  only:
+    - main
